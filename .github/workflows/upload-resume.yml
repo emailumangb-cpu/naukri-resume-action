@@ -1,7 +1,9 @@
 name: Update Naukri Profile
 
 on:
-  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *' # Runs every day at midnight UTC (approx. 5:30 AM IST)
+  workflow_dispatch: # Allows manual trigger
 
 jobs:
   update-profile:
@@ -18,5 +20,5 @@ jobs:
           profile_id: ${{ secrets.NAUKRI_PROFILE_ID }}
           resume_path: |-
             ./resumes/resume1.pdf
-          profile_summary: 'Your profile summary here ' # Optional: min 50 chars
-          resume_headline: 'Your resume headline here ' # Optional: max 250 chars
+          profile_summary: ${{ vars.NAUKRI_PROFILE_SUMMARY }}
+          resume_headline: ${{ vars.NAUKRI_RESUME_HEADLINE }}
