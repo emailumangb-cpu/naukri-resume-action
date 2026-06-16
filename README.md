@@ -48,6 +48,7 @@ jobs:
             ./resumes/resume1.pdf
             ./resumes/resume2.pdf
             ./resumes/resume3.pdf
+
           profile_summary: 'Your updated profile summary here this should be
             more than 50 chars' # Optional
 ```
