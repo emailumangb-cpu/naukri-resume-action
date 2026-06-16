@@ -29,14 +29,20 @@ export const updateProfileSummary = async (
           ...uploadFileHeader(cookieHeader),
           'content-type': 'application/json',
           'x-requested-with': 'XMLHttpRequest',
+          'cache-control': 'no-cache, no-store, must-revalidate',
+          pragma: 'no-cache',
+          expires: '0',
           appid: '801',
           systemid: '90',
           authorization: `Bearer ${cookieHeader.nauk_at}`
         };
 
-        const profileResp = await axios.get(profileFetchUrl, {
-          headers: getHeaders
-        });
+        const profileResp = await axios.get(
+          `${profileFetchUrl}&t=${Date.now()}`,
+          {
+            headers: getHeaders
+          }
+        );
 
         if (profileResp.status === 200 && profileResp.data) {
           // eslint-disable-next-line no-console

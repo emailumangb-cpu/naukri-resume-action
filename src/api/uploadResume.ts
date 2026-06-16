@@ -42,9 +42,18 @@ export const uploadResume = async (
 
     console.log('Uploading file...');
 
-    const uploadResponse = await axios.post(resumeUploadUrl, formData, {
-      headers: uploadHeaders
-    });
+    const uploadResponse = await axios.post(
+      `${resumeUploadUrl}?t=${Date.now()}`,
+      formData,
+      {
+        headers: {
+          ...uploadHeaders,
+          'cache-control': 'no-cache, no-store, must-revalidate',
+          pragma: 'no-cache',
+          expires: '0'
+        }
+      }
+    );
 
     if (uploadResponse.status !== 200) {
       console.error(
@@ -57,13 +66,16 @@ export const uploadResume = async (
 
     console.log('File uploaded successfully!');
 
-    const updateResumeUrl = resumeUpdateUrl(resumeId);
+    const updateResumeUrl = `${resumeUpdateUrl(resumeId)}?t=${Date.now()}`;
 
     const updateHeaders = {
       ...uploadFileHeader(cookieHeader),
       'content-type': 'application/json',
       'x-http-method-override': 'PUT',
       'x-requested-with': 'XMLHttpRequest',
+      'cache-control': 'no-cache, no-store, must-revalidate',
+      pragma: 'no-cache',
+      expires: '0',
       appid: '105',
       systemid: '105',
       authorization: `Bearer ${cookieHeader.nauk_at}`

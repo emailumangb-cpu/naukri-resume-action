@@ -30,7 +30,18 @@ export const updateResumeHeadline = async (
     // eslint-disable-next-line no-console
     console.log('📝 Updating resume headline...');
 
-    const resp = await axios.post(resumeHeadlineUrl, data, { headers });
+    const resp = await axios.post(
+      `${resumeHeadlineUrl}?t=${Date.now()}`,
+      data,
+      {
+        headers: {
+          ...headers,
+          'cache-control': 'no-cache, no-store, must-revalidate',
+          pragma: 'no-cache',
+          expires: '0'
+        }
+      }
+    );
 
     if (resp.status !== 200) {
       console.error('Headline update failed:', resp.status, resp.data);

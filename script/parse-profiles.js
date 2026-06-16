@@ -6,7 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 function parseCSV(content) {
-  const lines = content.split(/\r?\n/).filter(line => line.trim().length > 0);
+  const lines = content.split(/\r?\n/).filter((line) => line.trim().length > 0);
   if (lines.length < 2) return [];
 
   const headers = parseCSVLine(lines[0]);
@@ -51,7 +51,7 @@ function parseCSVLine(line) {
 
 const csvPath = path.join(__dirname, '../profiles.csv');
 if (!fs.existsSync(csvPath)) {
-  console.error("profiles.csv file not found");
+  console.error('profiles.csv file not found');
   process.exit(1);
 }
 
