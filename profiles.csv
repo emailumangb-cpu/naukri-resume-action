@@ -1,0 +1,3 @@
+name,username,password,profile_id,resume_path,profile_summary,resume_headline
+"Alice","alice@example.com","AlicePassword123","alice_profile_id_here","./resumes/resume1.pdf","Experienced software developer with a focus on web apps and typescript.","Senior Full Stack Engineer | React & Node.js | TypeScript Specialist"
+"Bob","bob@example.com","BobPassword456","bob_profile_id_here","./resumes/resume1.pdf","Marketing specialist skilled in digital growth, SEO, and paid campaigns.","Digital Marketing Specialist | Growth Manager | SEO Expert"

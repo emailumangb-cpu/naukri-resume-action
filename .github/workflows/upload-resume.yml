@@ -6,19 +6,41 @@ on:
   workflow_dispatch: # Allows manual trigger
 
 jobs:
-  update-profile:
-    runs-on: self-hosted
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Update Naukri profile
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate matrix output
+        id: set-matrix
+        run: |
+          MATRIX_JSON=$(node script/parse-profiles.js)
+          echo "matrix=$MATRIX_JSON" >> $GITHUB_OUTPUT
+
+  update-profile:
+    needs: setup
+    runs-on: self-hosted
+    strategy:
+      fail-fast: false
+      matrix: ${{fromJson(needs.setup.outputs.matrix)}}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Update Naukri profile for ${{ matrix.name }}
         uses: Prateek-Wayne/naukri-resume-action@main
         with:
-          username: ${{ secrets.NAUKRI_USERNAME }}
-          password: ${{ secrets.NAUKRI_PASSWORD }}
-          profile_id: ${{ secrets.NAUKRI_PROFILE_ID }}
-          resume_path: |-
-            ./resumes/resume1.pdf
-          profile_summary: ${{ vars.NAUKRI_PROFILE_SUMMARY }}
-          resume_headline: ${{ vars.NAUKRI_RESUME_HEADLINE }}
+          username: ${{ matrix.username }}
+          password: ${{ matrix.password }}
+          profile_id: ${{ matrix.profile_id }}
+          resume_path: ${{ matrix.resume_path }}
+          profile_summary: ${{ matrix.profile_summary }}
+          resume_headline: ${{ matrix.resume_headline }}
