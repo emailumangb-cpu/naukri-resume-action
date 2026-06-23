@@ -4,6 +4,14 @@ import { loginHeaders } from '../utils/headers';
 import { loginUrl } from '../utils/constants';
 import type { LoginCookies } from '../utils/types';
 
+const extractCookieValue = (cookie: string): string => {
+  const eqIndex = cookie.indexOf('=');
+  if (eqIndex === -1) return '';
+  const afterEq = cookie.substring(eqIndex + 1);
+  const semiIndex = afterEq.indexOf(';');
+  return semiIndex === -1 ? afterEq.trim() : afterEq.substring(0, semiIndex).trim();
+};
+
 const extractCookieObject = (cookies: string[] = []): LoginCookies => {
   let unid = '';
   let nkwap = '';
@@ -13,15 +21,15 @@ const extractCookieObject = (cookies: string[] = []): LoginCookies => {
 
   for (const cookie of cookies) {
     if (cookie.startsWith('MYNAUKRI[UNID]=')) {
-      unid = cookie.split(';')[0].split('=')[1];
+      unid = extractCookieValue(cookie);
     } else if (cookie.startsWith('NKWAP=')) {
-      nkwap = cookie.split(';')[0].split('=')[1];
+      nkwap = extractCookieValue(cookie);
     } else if (cookie.startsWith('nauk_at=')) {
-      nauk_at = cookie.split(';')[0].split('=')[1];
+      nauk_at = extractCookieValue(cookie);
     } else if (cookie.startsWith('nauk_rt=')) {
-      nauk_rt = cookie.split(';')[0].split('=')[1];
+      nauk_rt = extractCookieValue(cookie);
     } else if (cookie.startsWith('nauk_sid=')) {
-      nauk_sid = cookie.split(';')[0].split('=')[1];
+      nauk_sid = extractCookieValue(cookie);
     }
   }
 
@@ -47,8 +55,11 @@ export const login = async (
       }
     );
 
-    const cookies = response.headers['set-cookie'];
+    let cookies = response.headers['set-cookie'];
     if (cookies) {
+      if (typeof cookies === 'string') {
+        cookies = [cookies];
+      }
       const cookiesData = extractCookieObject(cookies);
       return cookiesData;
     } else {

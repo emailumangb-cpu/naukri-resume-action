@@ -21,9 +21,7 @@ jobs:
 
       - name: Generate matrix output
         id: set-matrix
-        run: |
-          MATRIX_JSON=$(node script/parse-profiles.js)
-          echo "matrix=$MATRIX_JSON" >> $GITHUB_OUTPUT
+        run: node script/parse-profiles.js
 
   update-profile:
     needs: setup
@@ -36,7 +34,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Update Naukri profile for ${{ matrix.name }}
-        uses: Prateek-Wayne/naukri-resume-action@main
+        uses: ./
         with:
           username: ${{ matrix.username }}
           password: ${{ matrix.password }}

@@ -57,4 +57,11 @@ if (!fs.existsSync(csvPath)) {
 
 const csvContent = fs.readFileSync(csvPath, 'utf8');
 const profiles = parseCSV(csvContent);
-console.log(JSON.stringify({ include: profiles }));
+const matrixJson = JSON.stringify({ include: profiles });
+const outputFile = process.env.GITHUB_OUTPUT;
+
+if (outputFile) {
+  fs.appendFileSync(outputFile, `matrix<<EOF\n${matrixJson}\nEOF\n`);
+} else {
+  console.log(matrixJson);
+}

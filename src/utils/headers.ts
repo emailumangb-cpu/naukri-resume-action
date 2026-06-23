@@ -34,7 +34,6 @@ export const uploadFileHeader = (cookieHeader: LoginCookies) => {
   const uploadHeader = {
     accept: 'application/json, text/javascript, */*; q=0.01',
     'accept-language': 'en-GB,en-US;q=0.9,en;q=0.8',
-    'access-control-allow-origin': '*',
     appid: '109',
     origin: 'https://www.naukri.com',
     priority: 'u=1, i',

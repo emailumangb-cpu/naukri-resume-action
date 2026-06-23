@@ -51268,7 +51268,6 @@ const uploadFileHeader = (cookieHeader) => {
     const uploadHeader = {
         accept: 'application/json, text/javascript, */*; q=0.01',
         'accept-language': 'en-GB,en-US;q=0.9,en;q=0.8',
-        'access-control-allow-origin': '*',
         appid: '109',
         origin: 'https://www.naukri.com',
         priority: 'u=1, i',
@@ -51297,13 +51296,49 @@ const resumeUploadUrl = 'https://filevalidation.naukri.com/file';
 const resumeUpdateUrl = (profileId) => {
     return `https://www.naukri.com/cloudgateway-mynaukri/resman-aggregator-services/v0/users/self/profiles/${profileId}/advResume`;
 };
-// Profile complete URL used to update profile summary and fetch profile data
-const profileCompleteUrl = 'https://www.naukri.com/cloudgateway-ncjobseeker/fn-jobseeker-profile-services/v0/users/self/profile-complete?flowId=mobile-mnj';
-// Alias for backward compatibility
-const profileFetchUrl = profileCompleteUrl;
-// Resume headline update URL
-const resumeHeadlineUrl = 'https://www.naukri.com/cloudgateway-mynaukri/resman-aggregator-services/v1/users/self/fullprofiles';
+// Dashboard URL used to resolve the active profile ID after login
+const dashboardUrl = 'https://www.naukri.com/cloudgateway-mynaukri/resman-aggregator-services/v0/users/self/dashboard';
+// Profile update URL for summary, headline, and other profile fields
+const profileUpdateUrl = 'https://www.naukri.com/cloudgateway-mynaukri/resman-aggregator-services/v1/users/self/fullprofiles';
+// Alias kept for backward compatibility
+const resumeHeadlineUrl = profileUpdateUrl;
 
+const fetchProfileId = async (cookieHeader) => {
+    try {
+        const headers = {
+            ...uploadFileHeader(cookieHeader),
+            accept: 'application/json',
+            appid: '105',
+            clientid: 'd3skt0p',
+            systemid: 'Naukri',
+            authorization: `Bearer ${cookieHeader.nauk_at}`,
+            'cache-control': 'no-cache, no-store, must-revalidate',
+            pragma: 'no-cache',
+            expires: '0'
+        };
+        const resp = await axios.get(`${dashboardUrl}?t=${Date.now()}`, {
+            headers
+        });
+        if (resp.status !== 200 || !resp.data) {
+            return null;
+        }
+        const data = resp.data;
+        return data.profileId ?? data.dashBoard?.profileId ?? null;
+    }
+    catch (error) {
+        console.error('Failed to fetch profile ID from dashboard:', error);
+        return null;
+    }
+};
+
+const extractCookieValue = (cookie) => {
+    const eqIndex = cookie.indexOf('=');
+    if (eqIndex === -1)
+        return '';
+    const afterEq = cookie.substring(eqIndex + 1);
+    const semiIndex = afterEq.indexOf(';');
+    return semiIndex === -1 ? afterEq.trim() : afterEq.substring(0, semiIndex).trim();
+};
 const extractCookieObject = (cookies = []) => {
     let unid = '';
     let nkwap = '';
@@ -51312,19 +51347,19 @@ const extractCookieObject = (cookies = []) => {
     let nauk_sid = '';
     for (const cookie of cookies) {
         if (cookie.startsWith('MYNAUKRI[UNID]=')) {
-            unid = cookie.split(';')[0].split('=')[1];
+            unid = extractCookieValue(cookie);
         }
         else if (cookie.startsWith('NKWAP=')) {
-            nkwap = cookie.split(';')[0].split('=')[1];
+            nkwap = extractCookieValue(cookie);
         }
         else if (cookie.startsWith('nauk_at=')) {
-            nauk_at = cookie.split(';')[0].split('=')[1];
+            nauk_at = extractCookieValue(cookie);
         }
         else if (cookie.startsWith('nauk_rt=')) {
-            nauk_rt = cookie.split(';')[0].split('=')[1];
+            nauk_rt = extractCookieValue(cookie);
         }
         else if (cookie.startsWith('nauk_sid=')) {
-            nauk_sid = cookie.split(';')[0].split('=')[1];
+            nauk_sid = extractCookieValue(cookie);
         }
     }
     return { unid, nkwap, nauk_at, nauk_rt, nauk_sid };
@@ -51339,8 +51374,11 @@ const login = async (username, password) => {
             maxRedirects: 0,
             validateStatus: (status) => status < 400
         });
-        const cookies = response.headers['set-cookie'];
+        let cookies = response.headers['set-cookie'];
         if (cookies) {
+            if (typeof cookies === 'string') {
+                cookies = [cookies];
+            }
             const cookiesData = extractCookieObject(cookies);
             return cookiesData;
         }
@@ -51433,174 +51471,94 @@ const uploadResume = async (cookieHeader, resumePath, resumeId) => {
     }
 };
 
-/**
- * Update the jobseeker profile summary.
- * - If the remote API requires additional profile fields, pass a full payload
- *   using the `fullPayload` parameter. If omitted, a minimal payload containing
- *   `profileId` and `summary` will be sent.
- */
-const updateProfileSummary = async (cookieHeader, profileId, summary, fullPayload) => {
-    try {
-        let data = fullPayload;
-        // If no full payload provided, fetch current profile and merge summary
-        if (!fullPayload) {
-            // eslint-disable-next-line no-console
-            console.log('📥 Fetching current profile data...');
-            try {
-                // Headers for GET request (without x-http-method-override)
-                const getHeaders = {
-                    ...uploadFileHeader(cookieHeader),
-                    'content-type': 'application/json',
-                    'x-requested-with': 'XMLHttpRequest',
-                    'cache-control': 'no-cache, no-store, must-revalidate',
-                    pragma: 'no-cache',
-                    expires: '0',
-                    appid: '801',
-                    systemid: '90',
-                    authorization: `Bearer ${cookieHeader.nauk_at}`
-                };
-                const profileResp = await axios.get(`${profileFetchUrl}&t=${Date.now()}`, {
-                    headers: getHeaders
-                });
-                if (profileResp.status === 200 && profileResp.data) {
-                    // eslint-disable-next-line no-console
-                    console.log('✓ Profile data fetched successfully');
-                    // Extract only resumeMakerPersonalDetails to avoid formKey/fileKey errors from other sections
-                    const personalDetails = profileResp.data.jobseekerData?.resumeMakerPersonalDetails;
-                    if (personalDetails) {
-                        // Remove uploadPhoto as it may contain null formKey/fileKey
-                        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                        const { uploadPhoto, ...cleanPersonalDetails } = personalDetails;
-                        // Send only the personal details section with updated summary
-                        data = {
-                            jobseekerData: {
-                                resumeMakerPersonalDetails: {
-                                    ...cleanPersonalDetails,
-                                    summary,
-                                    profileId
-                                }
-                            }
-                        };
-                        // eslint-disable-next-line no-console
-                        console.log('✓ Using resumeMakerPersonalDetails (removed uploadPhoto)');
-                    }
-                    else {
-                        // eslint-disable-next-line no-console
-                        console.warn('⚠️ Personal details not found, using minimal payload');
-                        data = {
-                            jobseekerData: {
-                                resumeMakerPersonalDetails: {
-                                    summary,
-                                    profileId
-                                }
-                            }
-                        };
-                    }
-                }
-                else {
-                    // eslint-disable-next-line no-console
-                    console.warn('⚠️ Could not fetch profile, using minimal payload');
-                    data = {
-                        jobseekerData: {
-                            resumeMakerPersonalDetails: {
-                                summary,
-                                profileId
-                            }
-                        }
-                    };
-                }
-            }
-            catch (fetchErr) {
-                // eslint-disable-next-line no-console
-                console.warn('⚠️ Profile fetch failed, using minimal payload:', fetchErr);
-                data = {
-                    jobseekerData: {
-                        resumeMakerPersonalDetails: {
-                            summary,
-                            profileId
-                        }
-                    }
-                };
-            }
-        }
-        // Headers for POST request (same pattern as uploadResume.ts)
-        const updateHeaders = {
-            ...uploadFileHeader(cookieHeader),
-            'content-type': 'application/json',
-            'x-http-method-override': 'PUT',
-            'x-requested-with': 'XMLHttpRequest',
-            appid: '801',
-            systemid: '90',
-            authorization: `Bearer ${cookieHeader.nauk_at}`
-        };
-        const url = profileCompleteUrl;
-        // eslint-disable-next-line no-console
-        console.log('Updating profile...');
-        const resp = await axios.post(url, data, { headers: updateHeaders });
-        if (resp.status !== 200) {
-            console.error('Profile update failed:', resp.status, resp.data);
-            return false;
-        }
-        console.log('Profile updated successfully!');
-        return true;
+const MIN_SUMMARY_LENGTH = 50;
+const MAX_SUMMARY_LENGTH = 5000;
+const MAX_HEADLINE_LENGTH = 1000;
+const buildProfileUpdateHeaders = (cookieHeader) => {
+    const cookieString = `MYNAUKRI[UNID]=${cookieHeader.unid}; NKWAP=${cookieHeader.nkwap}; nauk_at=${cookieHeader.nauk_at}; nauk_rt=${cookieHeader.nauk_rt}; nauk_sid=${cookieHeader.nauk_sid}`;
+    return {
+        accept: 'application/json',
+        'accept-language': 'en-US,en;q=0.9',
+        'content-type': 'application/json',
+        origin: 'https://www.naukri.com',
+        referer: 'https://www.naukri.com/mnjuser/profile?id=&altresid',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        'sec-ch-ua': '"Not/A)Brand";v="99", "Google Chrome";v="126", "Chromium";v="126"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        appid: '105',
+        systemid: '105',
+        clientid: 'd3skt0p',
+        authorization: `Bearer ${cookieHeader.nauk_at}`,
+        'x-http-method-override': 'PUT',
+        'x-requested-with': 'XMLHttpRequest',
+        'cache-control': 'no-cache, no-store, must-revalidate',
+        pragma: 'no-cache',
+        expires: '0',
+        Cookie: cookieString
+    };
+};
+const normalizeHeadline = (headline) => {
+    const trimmed = headline.trim();
+    if (trimmed.length <= MAX_HEADLINE_LENGTH) {
+        return { value: trimmed, truncated: false };
     }
-    catch (error) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const axiosError = error;
-        if (axiosError.response) {
-            console.error('Error in updateProfileSummary:', axiosError.response.status, axiosError.response.data);
-        }
-        else {
-            console.error('Error in updateProfileSummary:', error);
-        }
+    return {
+        value: trimmed.slice(0, MAX_HEADLINE_LENGTH).trimEnd(),
+        truncated: true
+    };
+};
+const isSuccessfulResponse = (status, data) => {
+    if (status < 200 || status >= 300) {
         return false;
     }
-};
-
-const updateResumeHeadline = async (cookieHeader, profileId, headline) => {
-    try {
-        const headers = {
-            ...uploadFileHeader(cookieHeader),
-            'content-type': 'application/json',
-            'x-http-method-override': 'PUT',
-            'x-requested-with': 'XMLHttpRequest',
-            appid: '105',
-            systemid: 'Naukri',
-            clientid: 'd3skt0p',
-            authorization: `Bearer ${cookieHeader.nauk_at}`
-        };
-        const data = {
-            profile: {
-                resumeHeadline: headline
-            },
-            profileId
-        };
-        // eslint-disable-next-line no-console
-        console.log('📝 Updating resume headline...');
-        const resp = await axios.post(`${resumeHeadlineUrl}?t=${Date.now()}`, data, {
-            headers: {
-                ...headers,
-                'cache-control': 'no-cache, no-store, must-revalidate',
-                pragma: 'no-cache',
-                expires: '0'
-            }
-        });
-        if (resp.status !== 200) {
-            console.error('Headline update failed:', resp.status, resp.data);
+    if (data && typeof data === 'object') {
+        const payload = data;
+        const statusValue = payload.status ?? payload.success ?? payload.error;
+        if (statusValue === false || statusValue === 'failure') {
             return false;
         }
-        // eslint-disable-next-line no-console
-        console.log('✅ Resume headline updated successfully!');
+        if (typeof statusValue === 'string' && /fail|error/i.test(statusValue)) {
+            return false;
+        }
+    }
+    return true;
+};
+const updateProfileFields = async (cookieHeader, profileId, fields) => {
+    const profile = {};
+    if (fields.summary !== undefined) {
+        profile.summary = fields.summary;
+    }
+    if (fields.resumeHeadline !== undefined) {
+        profile.resumeHeadline = fields.resumeHeadline;
+    }
+    if (Object.keys(profile).length === 0) {
+        return false;
+    }
+    try {
+        const data = {
+            profile,
+            profileId
+        };
+        console.log('Updating profile fields:', Object.keys(profile).join(', '));
+        console.log('Profile update payload:', JSON.stringify({ profile, profileId }));
+        const resp = await axios.post(`${resumeHeadlineUrl}?t=${Date.now()}`, data, { headers: buildProfileUpdateHeaders(cookieHeader) });
+        console.log('Profile update response status:', resp.status);
+        console.log('Profile update response data:', JSON.stringify(resp.data));
+        if (!isSuccessfulResponse(resp.status, resp.data)) {
+            console.error('Profile field update failed:', resp.status, JSON.stringify(resp.data));
+            return false;
+        }
+        console.log('Profile fields updated successfully!');
         return true;
     }
     catch (error) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const axiosError = error;
         if (axiosError.response) {
-            console.error('Error in updateResumeHeadline:', axiosError.response.status, axiosError.response.data);
+            console.error('Error in updateProfileFields:', 'Status:', axiosError.response.status, 'Data:', JSON.stringify(axiosError.response.data));
         }
         else {
-            console.error('Error in updateResumeHeadline:', error);
+            console.error('Error in updateProfileFields:', axiosError.message ?? error);
         }
         return false;
     }
@@ -51616,31 +51574,91 @@ async function run() {
         // Get user inputs
         const username = getInput('username');
         const password = getInput('password');
-        const profileId = getInput('profile_id');
+        const profileIdInput = getInput('profile_id');
         const resumePathInput = getInput('resume_path');
         let profileSummary = getInput('profile_summary');
         const resumeHeadline = getInput('resume_headline');
         // Mask sensitive inputs
         setSecret(username);
         setSecret(password);
-        setSecret(profileId);
-        // Parse resume paths (could be a single path or multiple paths in YAML array format)
+        setSecret(profileIdInput);
+        // Login to Naukri
+        info('🔐 Logging in to Naukri.com...');
+        const cookies = await login(username, password);
+        if (!cookies) {
+            throw new Error('❌ Login failed');
+        }
+        const fetchedProfileId = await fetchProfileId(cookies);
+        const profileId = fetchedProfileId ?? profileIdInput;
+        if (fetchedProfileId && fetchedProfileId !== profileIdInput) {
+            warning(`⚠️ Using profile ID from Naukri dashboard (${fetchedProfileId}). CSV value was ${profileIdInput}.`);
+        }
+        else if (!fetchedProfileId) {
+            warning(`⚠️ Could not fetch profile ID from dashboard. Using CSV value ${profileIdInput}.`);
+        }
+        info(`👤 Active profile ID: ${profileId}`);
+        const profileUpdates = {};
+        let requestedProfileUpdate = false;
+        if (profileSummary) {
+            profileSummary = profileSummary.trim();
+            if (profileSummary.length < MIN_SUMMARY_LENGTH) {
+                warning(`⚠️ Profile summary is too short (${profileSummary.length} chars). Minimum ${MIN_SUMMARY_LENGTH} characters required. Skipping profile summary update.`);
+            }
+            else if (profileSummary.length > MAX_SUMMARY_LENGTH) {
+                warning(`⚠️ Profile summary is too long (${profileSummary.length} chars). Maximum ${MAX_SUMMARY_LENGTH} characters allowed. Truncating.`);
+                requestedProfileUpdate = true;
+                profileUpdates.summary = `${profileSummary.slice(0, MAX_SUMMARY_LENGTH).trimEnd()} ${Date.now()}`;
+            }
+            else {
+                requestedProfileUpdate = true;
+                profileUpdates.summary = `${profileSummary} ${Date.now()}`;
+            }
+        }
+        if (resumeHeadline) {
+            requestedProfileUpdate = true;
+            const { value, truncated } = normalizeHeadline(resumeHeadline);
+            if (truncated) {
+                warning(`⚠️ Resume headline is too long (${resumeHeadline.trim().length} chars). Truncating to ${MAX_HEADLINE_LENGTH} characters for Naukri.`);
+            }
+            profileUpdates.resumeHeadline = value;
+        }
+        let profileUpdateSucceeded = true;
+        if (Object.keys(profileUpdates).length > 0) {
+            const updateFields = Object.keys(profileUpdates).join(', ');
+            info(`🔄 Updating profile fields: ${updateFields}`);
+            try {
+                profileUpdateSucceeded = await updateProfileFields(cookies, profileId, profileUpdates);
+                if (profileUpdateSucceeded) {
+                    if (profileUpdates.summary) {
+                        info('✅ Profile summary updated');
+                    }
+                    if (profileUpdates.resumeHeadline) {
+                        info('✅ Resume headline updated');
+                    }
+                }
+                else {
+                    warning('⚠️ Profile update failed (API returned non-success response)');
+                }
+            }
+            catch (err) {
+                profileUpdateSucceeded = false;
+                warning(`⚠️ Profile update error: ${err.message}`);
+            }
+        }
+        // Parse and validate resume paths (separate from profile update)
+        // so profile update runs even if resume file is missing
+        let uploadSucceeded = false;
+        let selectedResume = '';
         let resumePaths = [];
-        // If the input contains newlines, it's likely a YAML array
         if (resumePathInput.includes('\n')) {
             resumePaths = resumePathInput
                 .split('\n')
                 .map((line) => line.trim())
-                .filter((line) => line && !line.startsWith('#')); // Remove empty lines and comments
+                .filter((line) => line && !line.startsWith('#'));
         }
         else {
-            // Single path
             resumePaths = [resumePathInput];
         }
-        if (resumePaths.length === 0) {
-            throw new Error('🚫 No valid resume paths provided');
-        }
-        // Verify all paths exist
         const validResumePaths = resumePaths.filter((path) => {
             const exists = fs.existsSync(path);
             if (!exists) {
@@ -51648,78 +51666,34 @@ async function run() {
             }
             return exists;
         });
-        if (validResumePaths.length === 0) {
-            throw new Error('🚫 No valid resume files found at the specified paths');
-        }
-        // Select resume based on date for deterministic selection
-        // This provides a consistent way to rotate resumes based on the calendar
-        const today = new Date();
-        const dayOfMonth = today.getDate(); // 1-31
-        const dayOfWeek = today.getDay(); // 0-6 (Sunday is 0)
-        const month = today.getMonth(); // 0-11
-        // Combine day of month, day of week, and month for better distribution
-        const selectionFactor = (dayOfMonth + dayOfWeek * 5 + month * 31) % validResumePaths.length;
-        const selectedResume = validResumePaths[selectionFactor];
-        info(`📄 Selected resume for upload: ${selectedResume}`);
-        info(`📅 Selection based on date: Day ${dayOfMonth}, Weekday ${dayOfWeek}, Month ${month + 1}`);
-        setOutput('selected_resume 📄', selectedResume);
-        // Login to Naukri
-        info('🔐 Logging in to Naukri.com...');
-        const cookies = await login(username, password);
-        if (!cookies) {
-            throw new Error('❌ Login failed');
-        }
-        // Optionally update profile summary if provided
-        if (profileSummary) {
-            // Validate profile summary length (minimum 50 characters)
-            if (profileSummary.trim().length < 50) {
-                warning(`⚠️ Profile summary is too short (${profileSummary.trim().length} chars). Minimum 50 characters required. Skipping profile update.`);
+        if (validResumePaths.length > 0) {
+            const today = new Date();
+            const dayOfMonth = today.getDate();
+            const dayOfWeek = today.getDay();
+            const month = today.getMonth();
+            const selectionFactor = (dayOfMonth + dayOfWeek * 5 + month * 31) % validResumePaths.length;
+            selectedResume = validResumePaths[selectionFactor];
+            info(`📄 Selected resume for upload: ${selectedResume}`);
+            info(`📅 Selection based on date: Day ${dayOfMonth}, Weekday ${dayOfWeek}, Month ${month + 1}`);
+            setOutput('selected_resume 📄', selectedResume);
+            info('⬆️ Uploading resume...');
+            uploadSucceeded = await uploadResume(cookies, selectedResume, profileId);
+            if (uploadSucceeded) {
+                info('✅ Resume uploaded successfully!');
             }
-            else {
-                info('🔄 Updating profile summary...');
-                // add a unique time stamp at the end of profile summary
-                profileSummary += ` ${new Date().getTime()}`;
-                try {
-                    const ok = await updateProfileSummary(cookies, profileId, profileSummary);
-                    if (ok)
-                        info('✅ Profile summary updated');
-                    else
-                        warning('⚠️ Profile summary update failed (API returned non-2xx)');
-                }
-                catch (err) {
-                    warning(`⚠️ Profile summary update error: ${err.message}`);
-                }
-            }
-        }
-        // Optionally update resume headline if provided
-        if (resumeHeadline) {
-            if (resumeHeadline.trim().length > 250) {
-                warning(`⚠️ Resume headline is too long (${resumeHeadline.trim().length} chars). Maximum 250 characters allowed. Skipping headline update.`);
-            }
-            else {
-                info('📝 Updating resume headline...');
-                try {
-                    const headlineOk = await updateResumeHeadline(cookies, profileId, resumeHeadline.trim());
-                    if (headlineOk)
-                        info('✅ Resume headline updated');
-                    else
-                        warning('⚠️ Resume headline update failed (API returned non-2xx)');
-                }
-                catch (err) {
-                    warning(`⚠️ Resume headline update error: ${err.message}`);
-                }
-            }
-        }
-        // Upload the resume
-        info('⬆️ Uploading resume...');
-        const success = await uploadResume(cookies, selectedResume, profileId);
-        // Set outputs
-        setOutput('upload_status 🚀', success ? 'success ✅' : 'failure ❌');
-        setOutput('upload_time 🕒', new Date().toISOString());
-        if (success) {
-            info('✅ Resume uploaded successfully!');
         }
         else {
+            warning('⚠️ No valid resume files found. Skipping resume upload.');
+        }
+        // Set outputs
+        setOutput('upload_status 🚀', uploadSucceeded ? 'success ✅' : 'failure ❌');
+        setOutput('upload_time 🕒', new Date().toISOString());
+        setOutput('profile_update_status 📝', profileUpdateSucceeded ? 'success ✅' : 'failure ❌');
+        if (requestedProfileUpdate && !profileUpdateSucceeded) {
+            setFailed('❌ Profile summary/headline update failed');
+            return;
+        }
+        if (validResumePaths.length > 0 && !uploadSucceeded) {
             setFailed('❌ Resume upload failed');
         }
     }

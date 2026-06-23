@@ -11,13 +11,13 @@ export const resumeUpdateUrl = (profileId: string) => {
   return `https://www.naukri.com/cloudgateway-mynaukri/resman-aggregator-services/v0/users/self/profiles/${profileId}/advResume`;
 };
 
-// Profile complete URL used to update profile summary and fetch profile data
-export const profileCompleteUrl =
-  'https://www.naukri.com/cloudgateway-ncjobseeker/fn-jobseeker-profile-services/v0/users/self/profile-complete?flowId=mobile-mnj';
+// Dashboard URL used to resolve the active profile ID after login
+export const dashboardUrl =
+  'https://www.naukri.com/cloudgateway-mynaukri/resman-aggregator-services/v0/users/self/dashboard';
 
-// Alias for backward compatibility
-export const profileFetchUrl = profileCompleteUrl;
-
-// Resume headline update URL
-export const resumeHeadlineUrl =
+// Profile update URL for summary, headline, and other profile fields
+export const profileUpdateUrl =
   'https://www.naukri.com/cloudgateway-mynaukri/resman-aggregator-services/v1/users/self/fullprofiles';
+
+// Alias kept for backward compatibility
+export const resumeHeadlineUrl = profileUpdateUrl;

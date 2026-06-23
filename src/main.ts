@@ -1,9 +1,16 @@
 import * as core from '@actions/core';
 import * as fs from 'fs';
+import { fetchProfileId } from './api/fetchProfileId';
 import { login } from './api/login';
 import { uploadResume } from './api/uploadResume';
-import { updateProfileSummary } from './api/updateProfile';
-import { updateResumeHeadline } from './api/updateResumeHeadline';
+import {
+  MAX_HEADLINE_LENGTH,
+  MAX_SUMMARY_LENGTH,
+  MIN_SUMMARY_LENGTH,
+  normalizeHeadline,
+  updateProfileFields,
+  type ProfileFieldUpdates
+} from './api/updateProfileFields';
 
 /**
  * The main function for the action.
@@ -15,7 +22,7 @@ export async function run(): Promise<void> {
     // Get user inputs
     const username = core.getInput('username');
     const password = core.getInput('password');
-    const profileId = core.getInput('profile_id');
+    const profileIdInput = core.getInput('profile_id');
     const resumePathInput = core.getInput('resume_path');
     let profileSummary = core.getInput('profile_summary');
     const resumeHeadline = core.getInput('resume_headline');
@@ -23,57 +30,7 @@ export async function run(): Promise<void> {
     // Mask sensitive inputs
     core.setSecret(username);
     core.setSecret(password);
-    core.setSecret(profileId);
-
-    // Parse resume paths (could be a single path or multiple paths in YAML array format)
-    let resumePaths: string[] = [];
-
-    // If the input contains newlines, it's likely a YAML array
-    if (resumePathInput.includes('\n')) {
-      resumePaths = resumePathInput
-        .split('\n')
-        .map((line) => line.trim())
-        .filter((line) => line && !line.startsWith('#')); // Remove empty lines and comments
-    } else {
-      // Single path
-      resumePaths = [resumePathInput];
-    }
-
-    if (resumePaths.length === 0) {
-      throw new Error('🚫 No valid resume paths provided');
-    }
-
-    // Verify all paths exist
-    const validResumePaths = resumePaths.filter((path) => {
-      const exists = fs.existsSync(path);
-      if (!exists) {
-        core.warning(`⚠️ Resume file not found: ${path}`);
-      }
-      return exists;
-    });
-
-    if (validResumePaths.length === 0) {
-      throw new Error('🚫 No valid resume files found at the specified paths');
-    }
-
-    // Select resume based on date for deterministic selection
-    // This provides a consistent way to rotate resumes based on the calendar
-    const today = new Date();
-    const dayOfMonth = today.getDate(); // 1-31
-    const dayOfWeek = today.getDay(); // 0-6 (Sunday is 0)
-    const month = today.getMonth(); // 0-11
-
-    // Combine day of month, day of week, and month for better distribution
-    const selectionFactor =
-      (dayOfMonth + dayOfWeek * 5 + month * 31) % validResumePaths.length;
-
-    const selectedResume = validResumePaths[selectionFactor];
-
-    core.info(`📄 Selected resume for upload: ${selectedResume}`);
-    core.info(
-      `📅 Selection based on date: Day ${dayOfMonth}, Weekday ${dayOfWeek}, Month ${month + 1}`
-    );
-    core.setOutput('selected_resume 📄', selectedResume);
+    core.setSecret(profileIdInput);
 
     // Login to Naukri
     core.info('🔐 Logging in to Naukri.com...');
@@ -83,74 +40,154 @@ export async function run(): Promise<void> {
       throw new Error('❌ Login failed');
     }
 
-    // Optionally update profile summary if provided
+    const fetchedProfileId = await fetchProfileId(cookies);
+    const profileId = fetchedProfileId ?? profileIdInput;
+
+    if (fetchedProfileId && fetchedProfileId !== profileIdInput) {
+      core.warning(
+        `⚠️ Using profile ID from Naukri dashboard (${fetchedProfileId}). CSV value was ${profileIdInput}.`
+      );
+    } else if (!fetchedProfileId) {
+      core.warning(
+        `⚠️ Could not fetch profile ID from dashboard. Using CSV value ${profileIdInput}.`
+      );
+    }
+
+    core.info(`👤 Active profile ID: ${profileId}`);
+
+    const profileUpdates: ProfileFieldUpdates = {};
+    let requestedProfileUpdate = false;
+
     if (profileSummary) {
-      // Validate profile summary length (minimum 50 characters)
-      if (profileSummary.trim().length < 50) {
+      profileSummary = profileSummary.trim();
+
+      if (profileSummary.length < MIN_SUMMARY_LENGTH) {
         core.warning(
-          `⚠️ Profile summary is too short (${profileSummary.trim().length} chars). Minimum 50 characters required. Skipping profile update.`
+          `⚠️ Profile summary is too short (${profileSummary.length} chars). Minimum ${MIN_SUMMARY_LENGTH} characters required. Skipping profile summary update.`
         );
+      } else if (profileSummary.length > MAX_SUMMARY_LENGTH) {
+        core.warning(
+          `⚠️ Profile summary is too long (${profileSummary.length} chars). Maximum ${MAX_SUMMARY_LENGTH} characters allowed. Truncating.`
+        );
+        requestedProfileUpdate = true;
+        profileUpdates.summary = `${profileSummary.slice(0, MAX_SUMMARY_LENGTH).trimEnd()} ${Date.now()}`;
       } else {
-        core.info('🔄 Updating profile summary...');
-        // add a unique time stamp at the end of profile summary
-        profileSummary += ` ${new Date().getTime()}`;
-        try {
-          const ok = await updateProfileSummary(
-            cookies,
-            profileId,
-            profileSummary
-          );
-          if (ok) core.info('✅ Profile summary updated');
-          else
-            core.warning(
-              '⚠️ Profile summary update failed (API returned non-2xx)'
-            );
-        } catch (err) {
-          core.warning(
-            `⚠️ Profile summary update error: ${(err as Error).message}`
-          );
-        }
+        requestedProfileUpdate = true;
+        profileUpdates.summary = `${profileSummary} ${Date.now()}`;
       }
     }
 
-    // Optionally update resume headline if provided
     if (resumeHeadline) {
-      if (resumeHeadline.trim().length > 250) {
+      requestedProfileUpdate = true;
+      const { value, truncated } = normalizeHeadline(resumeHeadline);
+
+      if (truncated) {
         core.warning(
-          `⚠️ Resume headline is too long (${resumeHeadline.trim().length} chars). Maximum 250 characters allowed. Skipping headline update.`
+          `⚠️ Resume headline is too long (${resumeHeadline.trim().length} chars). Truncating to ${MAX_HEADLINE_LENGTH} characters for Naukri.`
         );
-      } else {
-        core.info('📝 Updating resume headline...');
-        try {
-          const headlineOk = await updateResumeHeadline(
-            cookies,
-            profileId,
-            resumeHeadline.trim()
-          );
-          if (headlineOk) core.info('✅ Resume headline updated');
-          else
-            core.warning(
-              '⚠️ Resume headline update failed (API returned non-2xx)'
-            );
-        } catch (err) {
+      }
+
+      profileUpdates.resumeHeadline = value;
+    }
+
+    let profileUpdateSucceeded = true;
+
+    if (Object.keys(profileUpdates).length > 0) {
+      const updateFields = Object.keys(profileUpdates).join(', ');
+      core.info(`🔄 Updating profile fields: ${updateFields}`);
+
+      try {
+        profileUpdateSucceeded = await updateProfileFields(
+          cookies,
+          profileId,
+          profileUpdates
+        );
+
+        if (profileUpdateSucceeded) {
+          if (profileUpdates.summary) {
+            core.info('✅ Profile summary updated');
+          }
+          if (profileUpdates.resumeHeadline) {
+            core.info('✅ Resume headline updated');
+          }
+        } else {
           core.warning(
-            `⚠️ Resume headline update error: ${(err as Error).message}`
+            '⚠️ Profile update failed (API returned non-success response)'
           );
         }
+      } catch (err) {
+        profileUpdateSucceeded = false;
+        core.warning(
+          `⚠️ Profile update error: ${(err as Error).message}`
+        );
       }
     }
 
-    // Upload the resume
-    core.info('⬆️ Uploading resume...');
-    const success = await uploadResume(cookies, selectedResume, profileId);
+    // Parse and validate resume paths (separate from profile update)
+    // so profile update runs even if resume file is missing
+    let uploadSucceeded = false;
+    let selectedResume = '';
+
+    let resumePaths: string[] = [];
+
+    if (resumePathInput.includes('\n')) {
+      resumePaths = resumePathInput
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith('#'));
+    } else {
+      resumePaths = [resumePathInput];
+    }
+
+    const validResumePaths = resumePaths.filter((path) => {
+      const exists = fs.existsSync(path);
+      if (!exists) {
+        core.warning(`⚠️ Resume file not found: ${path}`);
+      }
+      return exists;
+    });
+
+    if (validResumePaths.length > 0) {
+      const today = new Date();
+      const dayOfMonth = today.getDate();
+      const dayOfWeek = today.getDay();
+      const month = today.getMonth();
+
+      const selectionFactor =
+        (dayOfMonth + dayOfWeek * 5 + month * 31) % validResumePaths.length;
+
+      selectedResume = validResumePaths[selectionFactor];
+
+      core.info(`📄 Selected resume for upload: ${selectedResume}`);
+      core.info(
+        `📅 Selection based on date: Day ${dayOfMonth}, Weekday ${dayOfWeek}, Month ${month + 1}`
+      );
+      core.setOutput('selected_resume 📄', selectedResume);
+
+      core.info('⬆️ Uploading resume...');
+      uploadSucceeded = await uploadResume(cookies, selectedResume, profileId);
+
+      if (uploadSucceeded) {
+        core.info('✅ Resume uploaded successfully!');
+      }
+    } else {
+      core.warning('⚠️ No valid resume files found. Skipping resume upload.');
+    }
 
     // Set outputs
-    core.setOutput('upload_status 🚀', success ? 'success ✅' : 'failure ❌');
+    core.setOutput('upload_status 🚀', uploadSucceeded ? 'success ✅' : 'failure ❌');
     core.setOutput('upload_time 🕒', new Date().toISOString());
+    core.setOutput(
+      'profile_update_status 📝',
+      profileUpdateSucceeded ? 'success ✅' : 'failure ❌'
+    );
 
-    if (success) {
-      core.info('✅ Resume uploaded successfully!');
-    } else {
+    if (requestedProfileUpdate && !profileUpdateSucceeded) {
+      core.setFailed('❌ Profile summary/headline update failed');
+      return;
+    }
+
+    if (validResumePaths.length > 0 && !uploadSucceeded) {
       core.setFailed('❌ Resume upload failed');
     }
   } catch (error) {
