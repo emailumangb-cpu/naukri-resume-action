@@ -25,25 +25,27 @@ export async function run(): Promise<void> {
     core.setSecret(password);
     core.setSecret(profileId);
 
-    // Parse resume paths (could be a single path or multiple paths in YAML array format)
-    let resumePaths: string[] = [];
+    // Parse resume paths (could be a single filename or multiple filenames in YAML array format)
+    // All paths are resolved relative to the ./resumes/ directory
+    const RESUME_DIR = './resumes';
 
-    // If the input contains newlines, it's likely a YAML array
+    let resumeFilenames: string[] = [];
+
     if (resumePathInput.includes('\n')) {
-      resumePaths = resumePathInput
+      resumeFilenames = resumePathInput
         .split('\n')
         .map((line) => line.trim())
-        .filter((line) => line && !line.startsWith('#')); // Remove empty lines and comments
+        .filter((line) => line && !line.startsWith('#'));
     } else {
-      // Single path
-      resumePaths = [resumePathInput];
+      resumeFilenames = [resumePathInput];
     }
 
-    if (resumePaths.length === 0) {
+    if (resumeFilenames.length === 0) {
       throw new Error('🚫 No valid resume paths provided');
     }
 
-    // Verify all paths exist
+    const resumePaths = resumeFilenames.map((f) => `${RESUME_DIR}/${f}`);
+
     const validResumePaths = resumePaths.filter((path) => {
       const exists = fs.existsSync(path);
       if (!exists) {
@@ -53,7 +55,7 @@ export async function run(): Promise<void> {
     });
 
     if (validResumePaths.length === 0) {
-      throw new Error('🚫 No valid resume files found at the specified paths');
+      throw new Error('🚫 No valid resume files found in ./resumes/ directory');
     }
 
     // Select resume based on date for deterministic selection
@@ -85,10 +87,15 @@ export async function run(): Promise<void> {
 
     // Optionally update profile summary if provided
     if (profileSummary) {
-      // Validate profile summary length (minimum 50 characters)
-      if (profileSummary.trim().length < 50) {
+      // Validate profile summary length (minimum 50, maximum 900 characters)
+      const summaryLen = profileSummary.trim().length;
+      if (summaryLen < 50) {
         core.warning(
-          `⚠️ Profile summary is too short (${profileSummary.trim().length} chars). Minimum 50 characters required. Skipping profile update.`
+          `⚠️ Profile summary is too short (${summaryLen} chars). Minimum 50 characters required. Skipping profile update.`
+        );
+      } else if (summaryLen > 900) {
+        core.warning(
+          `⚠️ Profile summary is too long (${summaryLen} chars). Maximum 900 characters allowed. Skipping profile update.`
         );
       } else {
         core.info('🔄 Updating profile summary...');
