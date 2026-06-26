@@ -1,16 +1,16 @@
 ---
-name: undici
-version: 6.25.0
+name: asynckit
+version: 0.4.0
 type: npm
-summary: An HTTP/1.1 client, written from scratch for Node.js
-homepage: https://undici.nodejs.org
+summary: Minimal async jobs utility library, with streams support
+homepage: https://github.com/alexindigo/asynckit#readme
 license: mit
 licenses:
 - sources: LICENSE
   text: |
-    MIT License
+    The MIT License (MIT)
 
-    Copyright (c) Matteo Collina and Undici contributors
+    Copyright (c) 2016 Alex Indigo
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to deal
@@ -30,5 +30,5 @@ licenses:
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 - sources: README.md
-  text: MIT
+  text: AsyncKit is licensed under the MIT license.
 notices: []
