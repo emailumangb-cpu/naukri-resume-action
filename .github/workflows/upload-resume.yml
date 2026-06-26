@@ -1,62 +1,9 @@
 name: Update Naukri Profile
-
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: '0 0 * * *'
+on: workflow_dispatch
 
 jobs:
-  validate:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - name: Sanity check profiles.csv
-        run: node script/sanity-check.js
-
-  setup:
-    needs: validate
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - name: Generate matrix
-        id: set-matrix
-        run: |
-          MATRIX_JSON=$(node script/parse-profiles.js)
-          echo "matrix=$MATRIX_JSON" >> $GITHUB_OUTPUT
-
-  update-profile:
-    needs: setup
-    runs-on: self-hosted
-    strategy:
-      fail-fast: false
-      matrix: ${{fromJson(needs.setup.outputs.matrix)}}
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Update Naukri profile for ${{ matrix.name }}
-        id: update-profile
-        continue-on-error: true
-        uses: Prateek-Wayne/naukri-resume-action@main
-        with:
-          username: ${{ matrix.username }}
-          password: ${{ matrix.password }}
-          profile_id: ${{ matrix.profile_id }}
-          resume_path: ${{ matrix.resume_path }}
-          profile_summary: ${{ matrix.profile_summary }}
-          resume_headline: ${{ matrix.resume_headline }}
-
-      - name: Success
-        if: steps.update-profile.outputs.upload_status == 'success'
-        run: echo "Upload OK | Time: ${{ steps.update-profile.outputs.upload_time }}"
-
-      - name: Failure
-        if: failure()
-        run: echo "Upload FAILED"
+      - run: echo "Ready"
