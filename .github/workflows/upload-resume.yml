@@ -2,29 +2,19 @@ name: Update Naukri Profile
 
 on:
   schedule:
-    - cron: '0 0 * * *' # Runs every day at midnight UTC (approx. 5:30 AM IST)
-  workflow_dispatch: # Allows manual trigger
+    - cron: '0 0 * * *'
+  workflow_dispatch:
 
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
         with:
           node-version: '24'
-
-      - name: Run sanity checks on profiles.csv
-        id: sanity-check
-        run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "  PRE-VALIDATION: Checking profiles.csv"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          node script/sanity-check.js
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      - name: Sanity check profiles.csv
+        run: node script/sanity-check.js
 
   setup:
     needs: validate
@@ -32,23 +22,15 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
         with:
           node-version: '24'
-
-      - name: Generate matrix output from profiles.csv
+      - name: Generate matrix
         id: set-matrix
         run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "  GENERATING BUILD MATRIX"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           MATRIX_JSON=$(node script/parse-profiles.js)
           echo "matrix=$MATRIX_JSON" >> $GITHUB_OUTPUT
-          echo "Profiles loaded: $(echo $MATRIX_JSON | node -e "process.stdin.on('data',d=>{const m=JSON.parse(d);console.log(m.include.length+' profiles')})")"
 
   update-profile:
     needs: setup
@@ -57,18 +39,7 @@ jobs:
       fail-fast: false
       matrix: ${{fromJson(needs.setup.outputs.matrix)}}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: ▶️ Processing ${{ matrix.name }}
-        id: profile-header
-        run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "  PROFILE: ${{ matrix.name }}"
-          echo "  RESUME:  ${{ matrix.resume_path }}"
-          echo "  HEADLINE_LEN: ${{ length(matrix.resume_headline) }} chars"
-          echo "  SUMMARY_LEN:  ${{ length(matrix.profile_summary) }} chars"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      - uses: actions/checkout@v6
 
       - name: Update Naukri profile for ${{ matrix.name }}
         id: update-profile
@@ -82,15 +53,10 @@ jobs:
           profile_summary: ${{ matrix.profile_summary }}
           resume_headline: ${{ matrix.resume_headline }}
 
-      - name: ✅ ${{ matrix.name }} completed successfully
-        if: steps.update-profile.outputs.upload_status == 'success ✅'
-        run: echo "Upload status: ${{ steps.update-profile.outputs.upload_status }} | Time: ${{ steps.update-profile.outputs.upload_time }}"
+      - name: Success
+        if: steps.update-profile.outputs.upload_status == 'success'
+        run: echo "Upload OK | Time: ${{ steps.update-profile.outputs.upload_time }}"
 
-      - name: ❌ ${{ matrix.name }} failed
-        if: failure() || steps.update-profile.outcome == 'failure'
-        run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "  FAILED: ${{ matrix.name }}"
-          echo "  UPLOAD STATUS: ${{ steps.update-profile.outputs.upload_status }}"
-          echo "  Check logs above for error details"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      - name: Failure
+        if: failure()
+        run: echo "Upload FAILED"
